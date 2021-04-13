@@ -35,6 +35,7 @@ class IframeContentElement extends ReplacedElement {
       ..src = src
       ..style.border = 'none';
     //not actually an error
+    // ignore: undefined_prefixed_name
     ui.platformViewRegistry.registerViewFactory(createdViewId, (int viewId) => iframe);
     return Container(
       width: width ?? (height ?? 150) * 2,
