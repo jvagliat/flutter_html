@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_html/html_parser.dart';
+import 'package:flutter_html/shims/dart_ui.dart' as ui;
+import 'package:flutter_html/src/navigation_delegate.dart';
 import 'package:flutter_html/src/replaced_element.dart';
 import 'package:flutter_html/src/utils.dart';
 import 'package:flutter_html/style.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 import 'package:html/dom.dart' as dom;
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
-import 'dart:ui' as ui;
 
 /// [IframeContentElement is a [ReplacedElement] with web content.
 class IframeContentElement extends ReplacedElement {
@@ -25,7 +25,7 @@ class IframeContentElement extends ReplacedElement {
     required this.height,
     required dom.Element node,
     required this.navigationDelegate,
-  }) : super(name: name, style: Style(), node: node);
+  }) : super(name: name, style: Style(), node: node, elementId: node.id);
 
   @override
   Widget toWidget(RenderContext context) {
@@ -38,14 +38,18 @@ class IframeContentElement extends ReplacedElement {
     // ignore: undefined_prefixed_name
     ui.platformViewRegistry.registerViewFactory(createdViewId, (int viewId) => iframe);
     return Container(
-      width: width ?? (height ?? 150) * 2,
-      height: height ?? (width ?? 300) / 2,
-      child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: HtmlElementView(
-            viewType: createdViewId,
-          )
-      )
+        width: width ?? (height ?? 150) * 2,
+        height: height ?? (width ?? 300) / 2,
+        child: ContainerSpan(
+          style: context.style,
+          newContext: context,
+          child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: HtmlElementView(
+                viewType: createdViewId,
+              )
+          ),
+        )
     );
   }
 }

@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/gestures.dart';
+import 'package:chewie/chewie.dart';
+import 'package:chewie_audio/chewie_audio.dart';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+import 'package:flutter_html/style.dart';
 
 Map<String, String> namedColors = {
   "White": "#FFFFFF",
@@ -48,40 +51,21 @@ class Context<T> {
 
 // This class is a workaround so that both an image
 // and a link can detect taps at the same time.
-class MultipleTapGestureRecognizer extends TapGestureRecognizer {
-  bool _ready = false;
+class MultipleTapGestureDetector extends InheritedWidget {
+  final void Function()? onTap;
 
-  @override
-  void addAllowedPointer(PointerDownEvent event) {
-    if (state == GestureRecognizerState.ready) {
-      _ready = true;
-    }
-    super.addAllowedPointer(event);
+  const MultipleTapGestureDetector({
+    Key? key,
+    required Widget child,
+    required this.onTap,
+  }) : super(key: key, child: child);
+
+  static MultipleTapGestureDetector? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<MultipleTapGestureDetector>();
   }
 
   @override
-  void handlePrimaryPointer(PointerEvent event) {
-    if (event is PointerCancelEvent) {
-      _ready = false;
-    }
-    super.handlePrimaryPointer(event);
-  }
-
-  @override
-  void resolve(GestureDisposition disposition) {
-    if (_ready && disposition == GestureDisposition.rejected) {
-      _ready = false;
-    }
-    super.resolve(disposition);
-  }
-
-  @override
-  void rejectGesture(int pointer) {
-    if (_ready) {
-      acceptGesture(pointer);
-      _ready = false;
-    }
-  }
+  bool updateShouldNotify(MultipleTapGestureDetector oldWidget) => false;
 }
 
 class CustomBorderSide {
@@ -96,8 +80,51 @@ class CustomBorderSide {
   BorderStyle style;
 }
 
+/// Helps keep track of controllers used by [Html] widgets.
+/// A map is used so that controllers are not duplicated on widget rebuild
+class InternalControllers {
+  Map<int, ChewieAudioController> chewieAudioControllers = {};
+  Map<int, ChewieController> chewieControllers = {};
+  Map<int, VideoPlayerController> audioPlayerControllers = {};
+  Map<int, VideoPlayerController> videoPlayerControllers = {};
+}
+
 String getRandString(int len) {
   var random = Random.secure();
   var values = List<int>.generate(len, (i) =>  random.nextInt(255));
   return base64UrlEncode(values);
+}
+
+extension TextTransformUtil on String? {
+  String? transformed(TextTransform? transform) {
+    if (this == null) return null;
+    if (transform == TextTransform.uppercase) {
+      return this!.toUpperCase();
+    } else if (transform == TextTransform.lowercase) {
+      return this!.toLowerCase();
+    } else if (transform == TextTransform.capitalize) {
+      final stringBuffer = StringBuffer();
+
+      var capitalizeNext = true;
+      for (final letter in this!.toLowerCase().codeUnits) {
+        // UTF-16: A-Z => 65-90, a-z => 97-122.
+        if (capitalizeNext && letter >= 97 && letter <= 122) {
+          stringBuffer.writeCharCode(letter - 32);
+          capitalizeNext = false;
+        } else {
+          // UTF-16: 32 == space, 46 == period
+          if (letter == 32 || letter == 46) capitalizeNext = true;
+          stringBuffer.writeCharCode(letter);
+        }
+      }
+
+      return stringBuffer.toString();
+    } else {
+      return this;
+    }
+  }
+}
+
+extension ClampedEdgeInsets on EdgeInsetsGeometry {
+  EdgeInsetsGeometry get nonNegative => this.clamp(EdgeInsets.zero, const EdgeInsets.all(double.infinity));
 }

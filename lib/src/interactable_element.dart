@@ -13,7 +13,8 @@ class InteractableElement extends StyledElement {
     required Style style,
     required this.href,
     required dom.Node node,
-  }) : super(name: name, children: children, style: style, node: node as dom.Element?);
+    required String elementId,
+  }) : super(name: name, children: children, style: style, node: node as dom.Element?, elementId: elementId);
 }
 
 /// A [Gesture] indicates the type of interaction by a user.
@@ -21,19 +22,30 @@ enum Gesture {
   TAP,
 }
 
-InteractableElement parseInteractableElement(
+StyledElement parseInteractableElement(
     dom.Element element, List<StyledElement> children) {
   switch (element.localName) {
     case "a":
-      return InteractableElement(
+      if (element.attributes.containsKey('href')) {
+        return InteractableElement(
+            name: element.localName!,
+            children: children,
+            href: element.attributes['href'],
+            style: Style(
+              color: Colors.blue,
+              textDecoration: TextDecoration.underline,
+            ),
+            node: element,
+            elementId: element.id
+        );
+      }
+      // When <a> tag have no href, it must be non clickable and without decoration.
+      return StyledElement(
         name: element.localName!,
         children: children,
-        href: element.attributes['href'],
-        style: Style(
-          color: Colors.blue,
-          textDecoration: TextDecoration.underline,
-        ),
+        style: Style(),
         node: element,
+        elementId: element.id,
       );
     /// will never be called, just to suppress missing return warning
     default:
@@ -43,6 +55,7 @@ InteractableElement parseInteractableElement(
         node: element,
         href: '',
         style: Style(),
+        elementId: "[[No ID]]"
       );
   }
 }

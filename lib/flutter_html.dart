@@ -1,25 +1,39 @@
 library flutter_html;
 
-//export image render api
-export 'package:flutter_html/image_render.dart';
-//export style api
-export 'package:flutter_html/style.dart';
+import 'package:chewie/chewie.dart';
+import 'package:chewie_audio/chewie_audio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_html/custom_render.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_html/html_parser.dart';
+import 'package:flutter_html/image_render.dart';
+import 'package:flutter_html/src/html_elements.dart';
+import 'package:flutter_html/src/utils.dart';
+import 'package:flutter_html/style.dart';
+import 'package:html/dom.dart' as dom;
+import 'package:flutter_html/src/navigation_delegate.dart';
+import 'package:video_player/video_player.dart';
+
 //export render context api
 export 'package:flutter_html/html_parser.dart';
+//export render context api
+export 'package:flutter_html/html_parser.dart';
+//export image render api
+export 'package:flutter_html/image_render.dart';
+export 'package:flutter_html/custom_render.dart';
+//export image render api
+export 'package:flutter_html/image_render.dart';
 //export src for advanced custom render uses (e.g. casting context.tree)
+export 'package:flutter_html/src/anchor.dart';
+export 'package:flutter_html/src/interactable_element.dart';
 export 'package:flutter_html/src/layout_element.dart';
 export 'package:flutter_html/src/replaced_element.dart';
 export 'package:flutter_html/src/styled_element.dart';
-export 'package:flutter_html/src/interactable_element.dart';
+export 'package:flutter_html/src/navigation_delegate.dart';
+//export style api
+export 'package:flutter_html/style.dart';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_html/html_parser.dart';
-import 'package:flutter_html/image_render.dart';
-import 'package:flutter_html/style.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:html/dom.dart' as dom;
-
-class Html extends StatelessWidget {
+class Html extends StatefulWidget {
   /// The `Html` widget takes HTML as input and displays a RichText
   /// tree of the parsed HTML content.
   ///
@@ -41,43 +55,54 @@ class Html extends StatelessWidget {
   ///
   /// **onImageTap** This is called whenever an image is tapped.
   ///
-  /// **blacklistedElements** Tag names in this array are ignored during parsing and rendering.
+  /// **tagsList** Tag names in this array will be the only tags rendered. By default all supported HTML tags are rendered.
   ///
   /// **style** Pass in the style information for the Html here.
   /// See [its wiki page](https://github.com/Sub6Resources/flutter_html/wiki/Style) for more info.
   Html({
     Key? key,
+    GlobalKey? anchorKey,
     required this.data,
     this.onLinkTap,
-    this.customRender = const {},
+    this.onAnchorTap,
+    this.customRenders = const {},
     this.customImageRenders = const {},
+    this.onCssParseError,
     this.onImageError,
     this.onMathError,
     this.shrinkWrap = false,
     this.onImageTap,
-    this.blacklistedElements = const [],
+    this.tagsList = const [],
     this.style = const {},
     this.navigationDelegateForIframe,
-  }) : document = null,
-        assert (data != null),
+  })  : document = null,
+        assert(data != null),
+        _anchorKey = anchorKey ?? GlobalKey(),
         super(key: key);
 
   Html.fromDom({
     Key? key,
+    GlobalKey? anchorKey,
     @required this.document,
     this.onLinkTap,
-    this.customRender = const {},
+    this.onAnchorTap,
+    this.customRenders = const {},
     this.customImageRenders = const {},
+    this.onCssParseError,
     this.onImageError,
     this.onMathError,
     this.shrinkWrap = false,
     this.onImageTap,
-    this.blacklistedElements = const [],
+    this.tagsList = const [],
     this.style = const {},
     this.navigationDelegateForIframe,
-  }) : data = null,
+  })  : data = null,
         assert(document != null),
+        _anchorKey = anchorKey ?? GlobalKey(),
         super(key: key);
+
+  /// A unique key for this Html widget to ensure uniqueness of anchors
+  final GlobalKey _anchorKey;
 
   /// The HTML data passed to the widget as a String
   final String? data;
@@ -88,9 +113,16 @@ class Html extends StatelessWidget {
   /// A function that defines what to do when a link is tapped
   final OnTap? onLinkTap;
 
+  /// A function that defines what to do when an anchor link is tapped. When this value is set,
+  /// the default anchor behaviour is overwritten.
+  final OnTap? onAnchorTap;
+
   /// An API that allows you to customize the entire process of image rendering.
   /// See the README for more details.
   final Map<ImageSourceMatcher, ImageRender> customImageRenders;
+
+  /// A function that defines what to do when CSS fails to parse
+  final OnCssParseError? onCssParseError;
 
   /// A function that defines what to do when an image errors
   final ImageErrorListener? onImageError;
@@ -99,7 +131,6 @@ class Html extends StatelessWidget {
   /// You can return a widget here to override the default error widget.
   final OnMathError? onMathError;
 
-
   /// A parameter that should be set when the HTML widget is expected to be
   /// flexible
   final bool shrinkWrap;
@@ -107,12 +138,12 @@ class Html extends StatelessWidget {
   /// A function that defines what to do when an image is tapped
   final OnTap? onImageTap;
 
-  /// A list of HTML tags that defines what elements are not rendered
-  final List<String> blacklistedElements;
+  /// A list of HTML tags that are the only tags that are rendered. By default, this list is empty and all supported HTML tags are rendered.
+  final List<String> tagsList;
 
   /// Either return a custom widget for specific node types or return null to
   /// fallback to the default rendering.
-  final Map<String, CustomRender> customRender;
+  final Map<CustomRenderMatcher, CustomRender> customRenders;
 
   /// An API that allows you to override the default style for any HTML element
   final Map<String, Style> style;
@@ -122,6 +153,242 @@ class Html extends StatelessWidget {
   /// to use NavigationDelegate.
   final NavigationDelegate? navigationDelegateForIframe;
 
+  /// Get the list of supported tags for the [Html] widget
+  static List<String> get tags =>
+      new List<String>.from(STYLED_ELEMENTS)
+        ..addAll(INTERACTABLE_ELEMENTS)..addAll(REPLACED_ELEMENTS)..addAll(
+          LAYOUT_ELEMENTS)..addAll(TABLE_CELL_ELEMENTS)..addAll(
+          TABLE_DEFINITION_ELEMENTS);
+
+  /// Protected member to track controllers used in all [Html] widgets. Please
+  /// refrain from using this member, and rather use the [chewieAudioControllers],
+  /// [chewieControllers], [videoPlayerControllers], and [audioPlayerControllers]
+  /// getters to access the controllers in your own code.
+  @protected
+  static final InternalControllers controllers = InternalControllers();
+
+  /// Internal member to track controllers used in the specific [Html] widget.
+  /// This is only used so controllers can be automatically disposed when the
+  /// widget disposes.
+  final InternalControllers _controllers = InternalControllers();
+
+  /// Getter for all [ChewieAudioController]s initialized by [Html] widgets.
+  static List<ChewieAudioController> get chewieAudioControllers => controllers.chewieAudioControllers.values.toList();
+  /// Getter for all [ChewieController]s initialized by [Html] widgets.
+  static List<ChewieController> get chewieControllers => controllers.chewieControllers.values.toList();
+  /// Getter for all [VideoPlayerController]s for video widgets initialized by [Html] widgets.
+  static List<VideoPlayerController> get videoPlayerControllers => controllers.videoPlayerControllers.values.toList();
+  /// Getter for all [VideoPlayerController]s for audio widgets initialized by [Html] widgets.
+  static List<VideoPlayerController> get audioPlayerControllers => controllers.audioPlayerControllers.values.toList();
+
+  /// Convenience method to dispose all controllers used by all [Html] widgets
+  /// at this time. This is not necessary to be called, as each [Html] widget
+  /// will automatically handle disposing.
+  static void disposeAll() {
+    controllers.chewieAudioControllers.values.forEach((element) {
+      element.dispose();
+    });
+    controllers.chewieControllers.values.forEach((ChewieController element) {
+      element.dispose();
+    });
+    controllers.videoPlayerControllers.values.forEach((element) {
+      element.dispose();
+    });
+    controllers.audioPlayerControllers.values.forEach((element) {
+      element.dispose();
+    });
+  }
+
+  /// Internal method to add controllers to the global list and widget-specific
+  /// list. This should not be used in your app code.
+  void addController(int hashCode, dynamic controller, {bool isAudioController = false}) {
+    if (controller is ChewieAudioController) {
+      controllers.chewieAudioControllers[hashCode] = controller;
+      _controllers.chewieAudioControllers[hashCode] = controller;
+    } else if (controller is ChewieController) {
+      controllers.chewieControllers[hashCode] = controller;
+      _controllers.chewieControllers[hashCode] = controller;
+    } else if (controller is VideoPlayerController && !isAudioController) {
+      controllers.videoPlayerControllers[hashCode] = controller;
+      _controllers.videoPlayerControllers[hashCode] = controller;
+    } else if (controller is VideoPlayerController) {
+      controllers.audioPlayerControllers[hashCode] = controller;
+      _controllers.audioPlayerControllers[hashCode] = controller;
+    }
+  }
+
+  @override
+  State<StatefulWidget> createState() => _HtmlState();
+}
+
+class _HtmlState extends State<Html> {
+  late final dom.Document doc;
+
+  @override
+  void initState() {
+    super.initState();
+    doc =
+      widget.data != null ? HtmlParser.parseHTML(widget.data!) : widget.document!;
+  }
+
+  @override
+  void dispose() {
+    widget._controllers.chewieAudioControllers.values.forEach((element) {
+      element.dispose();
+    });
+    widget._controllers.chewieControllers.values.forEach((ChewieController element) {
+      element.dispose();
+    });
+    widget._controllers.videoPlayerControllers.values.forEach((element) {
+      element.dispose();
+    });
+    widget._controllers.audioPlayerControllers.values.forEach((element) {
+      element.dispose();
+    });
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: widget.shrinkWrap ? null : MediaQuery.of(context).size.width,
+      child: HtmlParser(
+        key: widget._anchorKey,
+        htmlData: doc,
+        onLinkTap: widget.onLinkTap,
+        onAnchorTap: widget.onAnchorTap,
+        onImageTap: widget.onImageTap,
+        onCssParseError: widget.onCssParseError,
+        onImageError: widget.onImageError,
+        onMathError: widget.onMathError,
+        shrinkWrap: widget.shrinkWrap,
+        selectable: false,
+        style: widget.style,
+        customRenders: {}
+          ..addAll(widget.customRenders)
+          ..addAll(defaultRenders),
+        imageRenders: {}
+          ..addAll(widget.customImageRenders)
+          ..addAll(defaultImageRenders),
+        tagsList: widget.tagsList.isEmpty ? Html.tags : widget.tagsList,
+        navigationDelegateForIframe: widget.navigationDelegateForIframe,
+        root: widget,
+      ),
+    );
+  }
+}
+
+class SelectableHtml extends StatelessWidget {
+  /// The `SelectableHtml` widget takes HTML as input and displays a RichText
+  /// tree of the parsed HTML content (which is selectable)
+  ///
+  /// **Attributes**
+  /// **data** *required* takes in a String of HTML data (required only for `Html` constructor).
+  /// **document** *required* takes in a Document of HTML data (required only for `Html.fromDom` constructor).
+  ///
+  /// **onLinkTap** This function is called whenever a link (`<a href>`)
+  /// is tapped.
+  ///
+  /// **onAnchorTap** This function is called whenever an anchor (#anchor-id)
+  /// is tapped.
+  ///
+  /// **tagsList** Tag names in this array will be the only tags rendered. By default, all tags that support selectable content are rendered.
+  ///
+  /// **style** Pass in the style information for the Html here.
+  /// See [its wiki page](https://github.com/Sub6Resources/flutter_html/wiki/Style) for more info.
+  ///
+  /// **PLEASE NOTE**
+  ///
+  /// There are a few caveats due to Flutter [#38474](https://github.com/flutter/flutter/issues/38474):
+  ///
+  /// 1. The list of tags that can be rendered is significantly reduced.
+  /// Key omissions include no support for images/video/audio, table, and ul/ol because they all require widgets and `WidgetSpan`s.
+  ///
+  /// 2. No support for `customRender`, `customImageRender`, `onImageError`, `onImageTap`, `onMathError`, and `navigationDelegateForIframe`.
+  ///
+  /// 3. Styling support is significantly reduced. Only text-related styling works
+  /// (e.g. bold or italic), while container related styling (e.g. borders or padding/margin)
+  /// do not work because we can't use the `ContainerSpan` class (it needs an enclosing `WidgetSpan`).
+
+  SelectableHtml({
+    Key? key,
+    GlobalKey? anchorKey,
+    required this.data,
+    this.onLinkTap,
+    this.onAnchorTap,
+    this.onCssParseError,
+    this.shrinkWrap = false,
+    this.style = const {},
+    this.customRenders = const {},
+    this.tagsList = const [],
+    this.selectionControls,
+    this.scrollPhysics,
+  }) : document = null,
+        assert(data != null),
+        _anchorKey = anchorKey ?? GlobalKey(),
+        super(key: key);
+
+  SelectableHtml.fromDom({
+    Key? key,
+    GlobalKey? anchorKey,
+    required this.document,
+    this.onLinkTap,
+    this.onAnchorTap,
+    this.onCssParseError,
+    this.shrinkWrap = false,
+    this.style = const {},
+    this.customRenders = const {},
+    this.tagsList = const [],
+    this.selectionControls,
+    this.scrollPhysics,
+  }) : data = null,
+        assert(document != null),
+        _anchorKey = anchorKey ?? GlobalKey(),
+        super(key: key);
+
+  /// A unique key for this Html widget to ensure uniqueness of anchors
+  final GlobalKey _anchorKey;
+
+  /// The HTML data passed to the widget as a String
+  final String? data;
+
+  /// The HTML data passed to the widget as a pre-processed [dom.Document]
+  final dom.Document? document;
+
+  /// A function that defines what to do when a link is tapped
+  final OnTap? onLinkTap;
+
+  /// A function that defines what to do when an anchor link is tapped. When this value is set,
+  /// the default anchor behaviour is overwritten.
+  final OnTap? onAnchorTap;
+
+  /// A function that defines what to do when CSS fails to parse
+  final OnCssParseError? onCssParseError;
+
+  /// A parameter that should be set when the HTML widget is expected to be
+  /// flexible
+  final bool shrinkWrap;
+
+  /// A list of HTML tags that are the only tags that are rendered. By default, this list is empty and all supported HTML tags are rendered.
+  final List<String> tagsList;
+
+  /// An API that allows you to override the default style for any HTML element
+  final Map<String, Style> style;
+
+  /// Custom Selection controls allows you to override default toolbar and build custom toolbar
+  /// options
+  final TextSelectionControls? selectionControls;
+
+  /// Allows you to override the default scrollPhysics for [SelectableText.rich]
+  final ScrollPhysics? scrollPhysics;
+
+  /// Either return a custom widget for specific node types or return null to
+  /// fallback to the default rendering.
+  final Map<CustomRenderMatcher, SelectableCustomRender> customRenders;
+
+  /// Get the list of supported tags for the [SelectableHtml] widget
+  static List<String> get tags => new List<String>.from(SELECTABLE_ELEMENTS);
+
   @override
   Widget build(BuildContext context) {
     final dom.Document doc = data != null ? HtmlParser.parseHTML(data!) : document!;
@@ -130,19 +397,25 @@ class Html extends StatelessWidget {
     return Container(
       width: width,
       child: HtmlParser(
+        key: _anchorKey,
         htmlData: doc,
         onLinkTap: onLinkTap,
-        onImageTap: onImageTap,
-        onImageError: onImageError,
-        onMathError: onMathError,
+        onAnchorTap: onAnchorTap,
+        onImageTap: null,
+        onCssParseError: onCssParseError,
+        onImageError: null,
+        onMathError: null,
         shrinkWrap: shrinkWrap,
+        selectable: true,
         style: style,
-        customRender: customRender,
-        imageRenders: {}
-          ..addAll(customImageRenders)
-          ..addAll(defaultImageRenders),
-        blacklistedElements: blacklistedElements,
-        navigationDelegateForIframe: navigationDelegateForIframe,
+        customRenders: {}
+          ..addAll(customRenders)
+          ..addAll(defaultRenders),
+        imageRenders: defaultImageRenders,
+        tagsList: tagsList.isEmpty ? SelectableHtml.tags : tagsList,
+        navigationDelegateForIframe: null,
+        selectionControls: selectionControls,
+        scrollPhysics: scrollPhysics,
       ),
     );
   }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_html/src/css_parser.dart';
 import 'package:flutter_html/style.dart';
 import 'package:html/dom.dart' as dom;
 //TODO(Sub6Resources): don't use the internal code of the html package as it may change unexpectedly.
+//ignore: implementation_imports
 import 'package:html/src/query_selector.dart';
 
 /// A [StyledElement] applies a style to all of its children.
@@ -11,7 +13,7 @@ class StyledElement {
   final List<String> elementClasses;
   List<StyledElement> children;
   Style style;
-  final dom.Node? _node;
+  final dom.Element? _node;
 
   StyledElement({
     this.name = "[[No name]]",
@@ -23,7 +25,7 @@ class StyledElement {
   }) : this._node = node;
 
   bool matchesSelector(String selector) =>
-      _node != null && matches(_node as dom.Element, selector);
+      (_node != null && matches(_node!, selector)) || name == selector;
 
   Map<String, String> get attributes =>
       _node?.attributes.map((key, value) {
@@ -31,7 +33,7 @@ class StyledElement {
       }) ??
       Map<String, String>();
 
-  dom.Element? get element => _node as dom.Element?;
+  dom.Element? get element => _node;
 
   @override
   String toString() {
@@ -179,6 +181,17 @@ StyledElement parseStyledElement(
         display: Display.BLOCK,
       );
       break;
+    case "font":
+      styledElement.style = Style(
+        color: element.attributes['color'] != null ?
+          element.attributes['color']!.startsWith("#") ?
+            ExpressionMapping.stringToColor(element.attributes['color']!) :
+            ExpressionMapping.namedColorToColor(element.attributes['color']!) :
+          null,
+        fontFamily: element.attributes['face']?.split(",").first,
+        fontSize: element.attributes['size'] != null ? numberToFontSize(element.attributes['size']!) : null,
+      );
+      break;
     case "h1":
       styledElement.style = Style(
         fontSize: FontSize.xxLarge,
@@ -236,7 +249,8 @@ StyledElement parseStyledElement(
       styledElement.style = Style(
         margin: EdgeInsets.symmetric(vertical: 7.0),
         width: double.infinity,
-        border: Border(bottom: BorderSide(width: 1.0)),
+        height: 1,
+        backgroundColor: Colors.black,
         display: Display.BLOCK,
       );
       break;
@@ -368,3 +382,31 @@ StyledElement parseStyledElement(
 }
 
 typedef ListCharacter = String Function(int i);
+
+FontSize numberToFontSize(String num) {
+  switch (num) {
+    case "1":
+      return FontSize.xxSmall;
+    case "2":
+      return FontSize.xSmall;
+    case "3":
+      return FontSize.small;
+    case "4":
+      return FontSize.medium;
+    case "5":
+      return FontSize.large;
+    case "6":
+      return FontSize.xLarge;
+    case "7":
+      return FontSize.xxLarge;
+  }
+  if (num.startsWith("+")) {
+    final relativeNum = double.tryParse(num.substring(1)) ?? 0;
+    return numberToFontSize((3 + relativeNum).toString());
+  }
+  if (num.startsWith("-")) {
+    final relativeNum = double.tryParse(num.substring(1)) ?? 0;
+    return numberToFontSize((3 - relativeNum).toString());
+  }
+  return FontSize.medium;
+}
