@@ -5,7 +5,7 @@ import 'package:flutter_html/html_parser.dart';
 import 'package:flutter_html/src/navigation_delegate.dart';
 import 'package:flutter_html/src/replaced_element.dart';
 import 'package:flutter_html/style.dart';
-import 'package:webview_flutter/webview_flutter.dart' as webview;
+import 'package:webview_flutter/webview_flutter.dart' as wv;
 import 'package:html/dom.dart' as dom;
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -14,7 +14,7 @@ class IframeContentElement extends ReplacedElement {
   final String? src;
   final double? width;
   final double? height;
-  final webview.NavigationDelegate? navigationDelegate;
+  final dynamic? navigationDelegate;
   final UniqueKey key = UniqueKey();
 
   IframeContentElement({
@@ -26,32 +26,34 @@ class IframeContentElement extends ReplacedElement {
     required this.navigationDelegate,
   }) : super(name: name, style: Style(), node: node, elementId: node.id);
   
-  webview.WebViewController? controller;
+  wv.WebViewController? controller;
   
   @override
   Widget toWidget(RenderContext context) {
     final sandboxMode = attributes["sandbox"];
     if (controller == null) {
-      controller = webview.WebViewController()
+      controller = wv.WebViewController()
         ..setNavigationDelegate(
-          webview.NavigationDelegate(
+          wv.NavigationDelegate(
             onProgress: (int progress) {
               // Update loading bar.
             },
             onPageStarted: (String url) {},
             onPageFinished: (String url) {},
             onWebResourceError: (WebResourceError error) {},
-            onNavigationRequest: (webview.NavigationRequest request) async {
-              final result =
-                  await navigationDelegate!.onNavigationRequest!(webview.NavigationRequest(
-                url: request.url,
-                isMainFrame: request.isMainFrame,
-              ));
-              if (result == webview.NavigationDecision.prevent) {
-                return webview.NavigationDecision.prevent;
-              } else {
-                return webview.NavigationDecision.navigate;
-              }
+            onNavigationRequest: (wv.NavigationRequest request) async {
+              //pablo
+              // // final webview.NavigationDecision result =
+              // //     await navigationDelegate!.onNavigationRequest!(webview.NavigationRequest(
+              // //   url: request.url,
+              // //   isMainFrame: request.isMainFrame,
+              // // ));
+              // if (result == webview.NavigationDecision.prevent) {
+              //   return webview.NavigationDecision.prevent;
+              // } else {
+              //   return webview.NavigationDecision.navigate;
+              // }
+              return navigationDelegate.NavigationDecision.navigate;
             },
           ),
         )
@@ -68,7 +70,7 @@ class IframeContentElement extends ReplacedElement {
       child: ContainerSpan(
         style: context.style,
         newContext: context,
-        child: webview.WebViewWidget(
+        child: wv.WebViewWidget(
           controller: controller!,
           key: key,
           gestureRecognizers: {
